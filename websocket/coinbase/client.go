@@ -143,13 +143,13 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver 
 					log.Printf(`websocket error: "%s"`, err)
 				}
 				log.Printf("context done: %s", ctx.Err())
-				break
+				return
 
 			default:
 				m, buf, err := c.conn.Reader(ctx)
 				if err != nil {
 					log.Printf(`channel error: "%s"`, err)
-					break
+					return
 				}
 
 				if m != ws.MessageText {
@@ -163,7 +163,8 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver 
 						ctx = c.conn.CloseRead(ctx)
 						continue
 					}
-					log.Fatalf(`buffer read error: "%s"`, err)
+					log.Printf(`buffer read error: "%s"`, err)
+					return
 				}
 
 				if data, ok := makeDataPoint(match); ok {
