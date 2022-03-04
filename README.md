@@ -47,5 +47,6 @@ make run
 Things to do if I had more time:
 
 1. Improve test coverage
-2. The sandbox endpoint appears to have a rate limiter. Need to add a rate
-   limiter to the `DialOption` and see if that helps.
+2. The sandbox endpoint appears to be rate limited. Need to add a rate limiter
+   to the `DialOption` to see if that helps. Otherwise, may have to explicitly
+   ping/pong at regular intervals to check if the websocket is disconnected.
