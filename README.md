@@ -16,9 +16,8 @@ points.
 
 The VWAP formula used is based on the following resources:
 
-- https://academy.binance.com/en/articles/volume-weighted-average-price-vwap-explained
-- https://en.wikipedia.org/wiki/Volume-weighted_average_price
-
+- <https://academy.binance.com/en/articles/volume-weighted-average-price-vwap-explained>
+- <https://en.wikipedia.org/wiki/Volume-weighted_average_price>
 
 ## Assumptions
 
@@ -42,3 +41,7 @@ To run the engine:
 ```Shell
 make run
 ```
+
+## TODO
+
+1. Improve test coverage
