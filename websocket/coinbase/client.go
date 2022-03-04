@@ -111,7 +111,7 @@ func NewClient(ctx context.Context, url string) (websocket.Client, error) {
 }
 
 // Subscribe subscribes to the `matches` channel on the websocket.
-func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver chan websocket.DataPoint) error {
+func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver chan<- websocket.DataPoint) error {
 	if len(tradingPairs) == 0 {
 		return errors.New(`subscription error: tradingPairs must be provided`)
 	}
