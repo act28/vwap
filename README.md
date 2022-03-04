@@ -44,4 +44,8 @@ make run
 
 ## TODO
 
+Things to do if I had more time:
+
 1. Improve test coverage
+2. The sandbox endpoint appears to have a rate limiter. Need to add a rate
+   limiter to the `DialOption` and see if that helps.
