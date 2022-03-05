@@ -1,6 +1,7 @@
 package vwap
 
 import (
+	"context"
 	"sync"
 
 	"github.com/act28/vwap/websocket"
@@ -107,4 +108,37 @@ func (w *Window) Push(dp websocket.DataPoint) {
 	}
 
 	w.cumSum[dp.Pair] = tp
+}
+
+func (w *Window) Calculate(ctx context.Context, in <-chan websocket.DataPoint, out chan<- Result) error {
+	for {
+		select {
+		case <-ctx.Done():
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+		default:
+			dp, ok := <-in
+			if !ok {
+				close(out)
+				return ctx.Err()
+			}
+
+			w.Push(dp)
+
+			tp, ok := w.cumSum[dp.Pair]
+			if !ok {
+				out <- Result{
+					Pair: dp.Pair,
+					VWAP: decimal.NewFromInt(0),
+				}
+				continue
+			}
+
+			out <- Result{
+				Pair: dp.Pair,
+				VWAP: tp.vwap,
+			}
+		}
+	}
 }
