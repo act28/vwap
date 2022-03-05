@@ -4,53 +4,45 @@ import (
 	"sync"
 
 	"github.com/act28/vwap/websocket"
-	"github.com/dogmatiq/dapper"
 	"github.com/shopspring/decimal"
 )
 
 const maxWindowSize = 200
 
-// Result is the VWAP for the trading Pair at a particular point in time.
-type Result struct {
-	Pair string
-	VWAP decimal.Decimal
-}
-
-// Window is a window of DataPoints.
+// Window is a synchronized structure of DataPoints time series, and cumulative
+// totals for calculating the VWAP.
 type Window struct {
-	Size   uint
-	Series []websocket.DataPoint
-	SumPQ  map[string]decimal.Decimal
-	SumQ   map[string]decimal.Decimal
-	VWAP   map[string]decimal.Decimal
+	size   uint
+	series []websocket.DataPoint
+	sumPQ  map[string]decimal.Decimal
+	sumQ   map[string]decimal.Decimal
+	vwap   map[string]decimal.Decimal
 
 	mu sync.Mutex
 }
 
-func NewWindow(series []websocket.DataPoint, size uint) (Window, error) {
+// NewWindow returns a new sliding Window of size `size`.
+func NewWindow(size uint) (Window, error) {
 	if size == 0 || size > maxWindowSize {
 		size = maxWindowSize
 	}
 
-	if len(series) > int(size) {
-		// Discard the first k items.
-		k := len(series) - int(size)
-		series = series[k:]
-		dapper.Print(series)
-	}
-
 	return Window{
-		Series: series,
-		Size:   size,
-		SumPQ:  make(map[string]decimal.Decimal),
-		SumQ:   make(map[string]decimal.Decimal),
-		VWAP:   make(map[string]decimal.Decimal),
+		series: []websocket.DataPoint{},
+		size:   size,
+		sumPQ:  map[string]decimal.Decimal{},
+		sumQ:   map[string]decimal.Decimal{},
+		vwap:   map[string]decimal.Decimal{},
 	}, nil
 }
 
 // Len returns the length of the time series.
 func (w *Window) Len() int {
-	return len(w.Series)
+	return len(w.series)
+}
+
+func (w *Window) VWAP(pair string) decimal.Decimal {
+	return w.vwap[pair]
 }
 
 // Push pushes a new datapoint into the window.
@@ -58,29 +50,29 @@ func (w *Window) Push(dp websocket.DataPoint) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if w.Len() >= int(w.Size) {
-		// Drop the oldest point from the series.
-		p := w.Series[0]
-		w.Series = w.Series[1:]
-
-		// Subtract the dropped point's PW.and W.from the cumulative totals.
-		w.SumPQ[p.Pair] = w.SumPQ[p.Pair].Sub(p.Price.Mul(p.Volume))
-		w.SumQ[p.Pair] = w.SumQ[p.Pair].Sub(p.Volume)
+	if _, ok := w.vwap[dp.Pair]; !ok {
+		init := decimal.NewFromInt(0)
+		w.sumPQ[dp.Pair] = init
+		w.sumQ[dp.Pair] = init
 	}
 
-	if _, ok := w.VWAP[dp.Pair]; !ok {
-		w.SumPQ[dp.Pair] = dp.Price.Mul(dp.Volume)
-		w.SumQ[dp.Pair] = dp.Volume
-		w.VWAP[dp.Pair] = w.SumPQ[dp.Pair]
+	if w.Len() >= int(w.size) {
+		// Drop the oldest point from the series.
+		p := w.series[0]
+		w.series = w.series[1:]
+
+		// Subtract the dropped point's PQ and Q from the cumulative totals.
+		w.sumPQ[p.Pair] = w.sumPQ[p.Pair].Sub(p.Price.Mul(p.Volume))
+		w.sumQ[p.Pair] = w.sumQ[p.Pair].Sub(p.Volume)
 	}
 
 	// Append the next datapoint to the series, and update the cumulative totals.
-	w.Series = append(w.Series, dp)
-	w.SumPQ[dp.Pair] = w.SumPQ[dp.Pair].Add(dp.Price.Mul(dp.Volume))
-	w.SumQ[dp.Pair] = w.SumQ[dp.Pair].Add(dp.Volume)
+	w.series = append(w.series, dp)
+	w.sumPQ[dp.Pair] = w.sumPQ[dp.Pair].Add(dp.Price.Mul(dp.Volume))
+	w.sumQ[dp.Pair] = w.sumQ[dp.Pair].Add(dp.Volume)
 
 	// Calculate the new VWAP.
-	if !w.SumQ[dp.Pair].IsZero() {
-		w.VWAP[dp.Pair] = w.SumPQ[dp.Pair].Div(w.SumQ[dp.Pair])
+	if !w.sumQ[dp.Pair].IsZero() {
+		w.vwap[dp.Pair] = w.sumPQ[dp.Pair].Div(w.sumQ[dp.Pair])
 	}
 }
