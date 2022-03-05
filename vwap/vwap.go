@@ -9,16 +9,25 @@ import (
 
 const maxWindowSize = 200
 
+type Result struct {
+	Pair string
+	VWAP decimal.Decimal
+}
+
+type cumSum struct {
+	sumPQ decimal.Decimal
+	sumQ  decimal.Decimal
+	vwap  decimal.Decimal
+}
+
 // Window is a synchronized structure of DataPoints time series, and cumulative
 // totals for calculating the VWAP.
 type Window struct {
 	size   uint
 	series []websocket.DataPoint
-	sumPQ  map[string]decimal.Decimal
-	sumQ   map[string]decimal.Decimal
-	vwap   map[string]decimal.Decimal
+	cumSum map[string]cumSum
 
-	mu sync.Mutex
+	m sync.Mutex
 }
 
 // NewWindow returns a new sliding Window of size `size`.
@@ -30,9 +39,7 @@ func NewWindow(size uint) (Window, error) {
 	return Window{
 		series: []websocket.DataPoint{},
 		size:   size,
-		sumPQ:  map[string]decimal.Decimal{},
-		sumQ:   map[string]decimal.Decimal{},
-		vwap:   map[string]decimal.Decimal{},
+		cumSum: map[string]cumSum{},
 	}, nil
 }
 
@@ -41,38 +48,63 @@ func (w *Window) Len() int {
 	return len(w.series)
 }
 
-func (w *Window) VWAP(pair string) decimal.Decimal {
-	return w.vwap[pair]
+func (w *Window) VWAP(pair string) Result {
+	tp, ok := w.cumSum[pair]
+	if !ok {
+		return Result{}
+	}
+
+	return Result{
+		Pair: pair,
+		VWAP: tp.vwap,
+	}
 }
 
 // Push pushes a new datapoint into the window.
 func (w *Window) Push(dp websocket.DataPoint) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if _, ok := w.vwap[dp.Pair]; !ok {
-		init := decimal.NewFromInt(0)
-		w.sumPQ[dp.Pair] = init
-		w.sumQ[dp.Pair] = init
-	}
+	w.m.Lock()
+	defer w.m.Unlock()
 
 	if w.Len() >= int(w.size) {
-		// Drop the oldest point from the series.
+		// Drop the oldest datapoint from the series.
 		p := w.series[0]
 		w.series = w.series[1:]
 
-		// Subtract the dropped point's PQ and Q from the cumulative totals.
-		w.sumPQ[p.Pair] = w.sumPQ[p.Pair].Sub(p.Price.Mul(p.Volume))
-		w.sumQ[p.Pair] = w.sumQ[p.Pair].Sub(p.Volume)
+		// Subtract the dropped point's PQ and Q from the cumulative totals for
+		// the dropped point's trading pair and recalculate the VWAP.
+		pp, ok := w.cumSum[p.Pair]
+		if ok {
+			pp.sumPQ = pp.sumPQ.Sub(p.Price.Mul(p.Volume))
+			pp.sumQ = pp.sumQ.Sub(p.Volume)
+			pp.vwap = decimal.NewFromInt(0)
+			if !pp.sumQ.IsZero() {
+				pp.vwap = pp.sumPQ.Div(pp.sumQ)
+			}
+			w.cumSum[p.Pair] = pp
+		}
 	}
 
-	// Append the next datapoint to the series, and update the cumulative totals.
+	// Get the cumulative totals for the trading pair.
+	tp, ok := w.cumSum[dp.Pair]
+	if !ok {
+		init := decimal.NewFromInt(0)
+		tp = cumSum{
+			sumPQ: init,
+			sumQ:  init,
+			vwap:  init,
+		}
+	}
+
+	// Append the next datapoint to the series, and update the cumulative totals
+	// for the trading pair.
 	w.series = append(w.series, dp)
-	w.sumPQ[dp.Pair] = w.sumPQ[dp.Pair].Add(dp.Price.Mul(dp.Volume))
-	w.sumQ[dp.Pair] = w.sumQ[dp.Pair].Add(dp.Volume)
+	tp.sumPQ = tp.sumPQ.Add(dp.Price.Mul(dp.Volume))
+	tp.sumQ = tp.sumQ.Add(dp.Volume)
 
 	// Calculate the new VWAP.
-	if !w.sumQ[dp.Pair].IsZero() {
-		w.vwap[dp.Pair] = w.sumPQ[dp.Pair].Div(w.sumQ[dp.Pair])
+	if !tp.sumQ.IsZero() {
+		tp.vwap = tp.sumPQ.Div(tp.sumQ)
 	}
+
+	w.cumSum[dp.Pair] = tp
 }

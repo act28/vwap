@@ -15,13 +15,13 @@ func TestVWAPCalculation(t *testing.T) {
 	tests := []struct {
 		name       string
 		dataPoints []websocket.DataPoint
-		want       map[string]decimal.Decimal
+		want       []vwap.Result
 		size       uint
 	}{
 		{
 			name:       "EmptyDataPoints",
 			dataPoints: []websocket.DataPoint{},
-			want:       map[string]decimal.Decimal{},
+			want:       []vwap.Result{},
 			size:       4,
 		},
 		{
@@ -32,8 +32,11 @@ func TestVWAPCalculation(t *testing.T) {
 				{Price: decimal.NewFromInt(8), Volume: decimal.NewFromInt(15), Pair: "BTC-USD"},
 				{Price: decimal.NewFromInt(11), Volume: decimal.NewFromInt(165), Pair: "BTC-USD"},
 			},
-			want: map[string]decimal.Decimal{
-				"BTC-USD": decimal.RequireFromString("11.705607476635514"),
+			want: []vwap.Result{
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("10")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("16.7647058823529412")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("14.0816326530612245")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("11.705607476635514")},
 			},
 			size: 1000,
 		},
@@ -45,8 +48,11 @@ func TestVWAPCalculation(t *testing.T) {
 				{Price: decimal.NewFromInt(8), Volume: decimal.NewFromInt(15), Pair: "BTC-USD"},
 				{Price: decimal.NewFromInt(11), Volume: decimal.NewFromInt(165), Pair: "BTC-USD"},
 			},
-			want: map[string]decimal.Decimal{
-				"BTC-USD": decimal.RequireFromString("11.705607476635514"),
+			want: []vwap.Result{
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("10")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("16.7647058823529412")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("14.0816326530612245")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("11.705607476635514")},
 			},
 			size: 5,
 		},
@@ -59,8 +65,12 @@ func TestVWAPCalculation(t *testing.T) {
 				{Price: decimal.NewFromInt(11), Volume: decimal.NewFromInt(165), Pair: "BTC-USD"},
 				{Price: decimal.NewFromInt(19), Volume: decimal.NewFromInt(1000), Pair: "BTC-USD"},
 			},
-			want: map[string]decimal.Decimal{
-				"BTC-USD": decimal.RequireFromString("17.7415254237288136"),
+			want: []vwap.Result{
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("10")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("16.7647058823529412")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("14.0816326530612245")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("11.7980295566502463")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("17.7415254237288136")},
 			},
 			size: 3,
 		},
@@ -75,9 +85,14 @@ func TestVWAPCalculation(t *testing.T) {
 				{Pair: "ETH-USD", Price: decimal.NewFromInt(45), Volume: decimal.NewFromInt(15)},
 				{Pair: "BTC-USD", Price: decimal.NewFromInt(25), Volume: decimal.NewFromInt(100)},
 			},
-			want: map[string]decimal.Decimal{
-				"ETH-USD": decimal.RequireFromString("37.9230769230769231"),
-				"BTC-USD": decimal.RequireFromString("24.3333333333333333"),
+			want: []vwap.Result{
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("10")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("10")},
+				{Pair: "ETH-USD", VWAP: decimal.RequireFromString("31")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("15.5")},
+				{Pair: "ETH-USD", VWAP: decimal.RequireFromString("36.2380952380952381")},
+				{Pair: "ETH-USD", VWAP: decimal.RequireFromString("37.9230769230769231")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("24.3333333333333333")},
 			},
 			size: 5,
 		},
@@ -92,9 +107,14 @@ func TestVWAPCalculation(t *testing.T) {
 				{Pair: "ETH-USD", Price: decimal.NewFromInt(45), Volume: decimal.NewFromInt(15)},
 				{Pair: "BTC-USD", Price: decimal.NewFromInt(25), Volume: decimal.NewFromInt(100)},
 			},
-			want: map[string]decimal.Decimal{
-				"ETH-USD": decimal.RequireFromString("42.25"),
-				"BTC-USD": decimal.RequireFromString("25"),
+			want: []vwap.Result{
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("10")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("10")},
+				{Pair: "ETH-USD", VWAP: decimal.RequireFromString("31")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("21")},
+				{Pair: "ETH-USD", VWAP: decimal.RequireFromString("41")},
+				{Pair: "ETH-USD", VWAP: decimal.RequireFromString("42.25")},
+				{Pair: "BTC-USD", VWAP: decimal.RequireFromString("25")},
 			},
 			size: 2,
 		},
@@ -107,12 +127,10 @@ func TestVWAPCalculation(t *testing.T) {
 			list, err := vwap.NewWindow(tt.size)
 			require.NoError(t, err)
 
-			for _, d := range tt.dataPoints {
+			for i, d := range tt.dataPoints {
 				list.Push(d)
-			}
 
-			for k := range tt.want {
-				require.Equal(t, tt.want[k].String(), list.VWAP(k).String())
+				require.Equal(t, tt.want[i].VWAP.String(), list.VWAP(d.Pair).VWAP.String())
 			}
 		})
 	}
