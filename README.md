@@ -36,11 +36,23 @@ structured differently to handle other exchanges, and client types.
 
 ## Usage
 
-To run the engine:
+To run the engine...
+
+### As a docker container
 
 ```Shell
 make run
 ```
+
+This builds the docker image and runs the docker container.
+
+### As a CLI command
+
+```Shell
+make run-cli
+```
+
+This runs the command `go run ./cmd/server/main.go`
 
 ## TODO
 
