@@ -3,8 +3,10 @@ module github.com/act28/vwap
 go 1.17
 
 require (
+	github.com/dogmatiq/dodeca v1.3.1
 	github.com/shopspring/decimal v1.3.1
 	github.com/stretchr/testify v1.7.0
+	go.uber.org/dig v1.14.0
 	nhooyr.io/websocket v1.8.7
 )
 
