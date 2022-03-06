@@ -9,6 +9,7 @@ import (
 	"log"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/act28/vwap/websocket"
 	"github.com/shopspring/decimal"
@@ -23,67 +24,64 @@ const (
 	SandboxWSURL = "wss://ws-feed-public.sandbox.exchange.coinbase.com"
 )
 
-// RequestType is the type of websocket request.
-type RequestType string
+// requestType is the type of websocket request.
+type requestType string
 
 const (
-	// RequestTypeSubscribe indicates that this is a channel `subscribe`
+	// requestTypeSubscribe indicates that this is a channel `subscribe`
 	// request.
-	RequestTypeSubscribe RequestType = "subscribe"
+	requestTypeSubscribe requestType = "subscribe"
 )
 
-// ChannelType is the type of channel subscription.
-type ChannelType string
+// channelType is the type of channel subscription.
+type channelType string
 
 const (
-	// ChannelTypeMatches indicates a `matches` channel subscription type.
-	ChannelTypeMatches ChannelType = "matches"
+	// channelTypeMatches indicates a `matches` channel subscription type.
+	channelTypeMatches channelType = "matches"
 )
 
-// Request is a Coinbase websocket request.
+// request is a Coinbase websocket request.
 //
 // This uses the alternate form of specifying product IDs in the root object, to
 // add all product IDs to the subscribed channels.
-type Request struct {
-	Type       RequestType   `json:"type"`
+type request struct {
+	Type       requestType   `json:"type"`
 	ProductIDs []string      `json:"product_ids"`
-	Channels   []ChannelType `json:"channels"`
+	Channels   []channelType `json:"channels"`
 }
 
-// ResponseType is the type of websocket response.
-type ResponseType string
+// responseType is the type of websocket response.
+type responseType string
 
 const (
-	// ResponseTypeError indicates an `error` response from the websocket.
-	ResponseTypeError ResponseType = "error"
-	// ResponseTypeLastMatch indicates a `last_match` response from the websocket.
-	ResponseTypeLastMatch ResponseType = "last_match"
-	// ResponseTypeMatch indicates a `match` response from the websocket.
-	ResponseTypeMatch ResponseType = "match"
-	//ResponseTypeSubscriptions indicates a `subscription` response from the
-	//websocket.
-	ResponseTypeSubscriptions ResponseType = "subscriptions"
+	// responseTypeError indicates an `error` response from the websocket.
+	responseTypeError responseType = "error"
+	// responseTypeLastMatch indicates a `last_match` response from the websocket.
+	responseTypeLastMatch responseType = "last_match"
+	// responseTypeMatch indicates a `match` response from the websocket.
+	responseTypeMatch responseType = "match"
 )
 
-// Channel is a data struct that forms part of the channel subscription response.
-type Channel struct {
-	Name       ChannelType
-	ProductIDs []string
+// channel is a data struct that forms part of the channel subscription response.
+type channel struct {
+	Name       channelType `json:"name"`
+	ProductIDs []string    `json:"product_id"`
 }
 
-// SubscriptionResponse is a Coinbase websocket channel subscription response.
-type SubscriptionResponse struct {
-	Type      ResponseType    `json:"type"`
-	Channels  []Channel       `json:"channels"`
+// subscriptionResponse is a Coinbase websocket channel subscription response.
+type subscriptionResponse struct {
+	Type      responseType    `json:"type"`
+	Channels  []channel       `json:"channels"`
 	Message   string          `json:"message,omitempty"`
 	Size      decimal.Decimal `json:"size"`
 	Price     decimal.Decimal `json:"price"`
 	ProductID string          `json:"product_id"`
 }
 
-// MatchResponse is a Coinbase websocket `match` channel response.
-type MatchResponse struct {
-	Type      ResponseType    `json:"type"`
+// matchResponse is a Coinbase websocket `match` channel response.
+type matchResponse struct {
+	Type      responseType    `json:"type"`
 	Sequence  *big.Int        `json:"sequence"`
 	ProductID string          `json:"product_id"`
 	Size      decimal.Decimal `json:"size"`
@@ -111,38 +109,43 @@ func NewClient(ctx context.Context, url string) (websocket.Client, error) {
 }
 
 // Subscribe subscribes to the `matches` channel on the websocket.
-func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver chan websocket.DataPoint) error {
+func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver chan<- websocket.DataPoint) error {
 	if len(tradingPairs) == 0 {
 		return errors.New(`subscription error: tradingPairs must be provided`)
 	}
 
-	if err := wsjson.Write(ctx, c.conn, Request{
-		Type:       RequestTypeSubscribe,
+	if err := wsjson.Write(ctx, c.conn, request{
+		Type:       requestTypeSubscribe,
 		ProductIDs: tradingPairs,
-		Channels: []ChannelType{
-			ChannelTypeMatches,
+		Channels: []channelType{
+			channelTypeMatches,
 		},
 	}); err != nil {
 		return fmt.Errorf(`subscription error: "%w"`, err)
 	}
 
-	var resp SubscriptionResponse
+	var resp subscriptionResponse
 	if err := wsjson.Read(ctx, c.conn, &resp); err != nil {
 		return fmt.Errorf(`subscription response error:: "%w"`, err)
 	}
 
-	if resp.Type == ResponseTypeError {
+	if resp.Type == responseTypeError {
 		return fmt.Errorf(`subscription error: "%v"`, resp.Message)
 	}
 
 	go func() {
 		for {
 			select {
+			case <-time.After(5 * time.Second):
+				log.Print(`websocket timed out`)
+				close(receiver)
+				return
+
 			case <-ctx.Done():
-				if err := c.conn.Close(ws.StatusInternalError, `failed to close websocket`); err != nil {
-					log.Printf(`websocket error: "%s"`, err)
-				}
+				err := c.conn.Close(ws.StatusNormalClosure, "")
+				log.Printf(`websocket closed: "%s"`, err)
 				log.Printf("context done: %s", ctx.Err())
+				close(receiver)
 				return
 
 			default:
@@ -153,10 +156,11 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver 
 				}
 
 				if m != ws.MessageText {
+					log.Print(m)
 					// Ignore non-text messages.
 					continue
 				}
-				var match MatchResponse
+				var match matchResponse
 				dec := json.NewDecoder(buf)
 				if err := dec.Decode(&match); err != nil {
 					if err == io.EOF {
@@ -177,21 +181,35 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver 
 	return nil
 }
 
-var sequencer sync.Map
+var sequencer struct {
+	pair map[string]*big.Int
 
-func makeDataPoint(m MatchResponse) (websocket.DataPoint, bool) {
-	if m.Type != ResponseTypeMatch && m.Type != ResponseTypeLastMatch {
+	m sync.Mutex
+}
+
+func makeDataPoint(m matchResponse) (websocket.DataPoint, bool) {
+	sequencer.m.Lock()
+	defer sequencer.m.Unlock()
+
+	if m.Type != responseTypeMatch && m.Type != responseTypeLastMatch {
 		// Ignore anything that is not a `match` or`last_match`.
 		return websocket.DataPoint{}, false
 	}
 
-	seq, _ := sequencer.LoadOrStore(m.ProductID, m.Sequence)
-	if (m.Sequence).Cmp(seq.(*big.Int)) == -1 {
+	seq, ok := sequencer.pair[m.ProductID]
+	if !ok {
+		seq = big.NewInt(0)
+		sequencer.pair = map[string]*big.Int{
+			m.ProductID: seq,
+		}
+	}
+
+	if (m.Sequence).Cmp(seq) == -1 {
 		// Ignore out of order messages.
 		return websocket.DataPoint{}, false
 	}
 
-	sequencer.Store(m.ProductID, m.Sequence)
+	sequencer.pair[m.ProductID] = m.Sequence
 
 	return websocket.DataPoint{
 		Pair:   m.ProductID,

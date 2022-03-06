@@ -3,6 +3,7 @@ package coinbase_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/act28/vwap/websocket"
 	"github.com/act28/vwap/websocket/coinbase"
@@ -20,6 +21,8 @@ func TestNewWebsocketClient(t *testing.T) {
 
 func TestWebsocketChannelSubscribe(t *testing.T) {
 	t.Parallel()
+
+	ctx := context.Background()
 
 	tests := []struct {
 		name         string
@@ -54,16 +57,15 @@ func TestWebsocketChannelSubscribe(t *testing.T) {
 		tc := tc
 
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 
 			// we have to use the production websocket endpoint because the
 			// sandbox only supports BTC-USD.
 			ws, err := coinbase.NewClient(ctx, coinbase.ProdWSURL)
 			require.NoError(t, err)
 
-			receiver := make(chan websocket.DataPoint, 10)
+			receiver := make(chan websocket.DataPoint)
 			err = ws.Subscribe(ctx, tc.tradingPairs, receiver)
 
 			if tc.wantErr {
@@ -73,10 +75,18 @@ func TestWebsocketChannelSubscribe(t *testing.T) {
 
 				var cnt int
 				for m := range receiver {
-					cnt++
-					require.Contains(t, tc.tradingPairs, m.Pair)
-					if cnt >= 3 {
-						break
+					select {
+					case <-time.After(3 * time.Second):
+						cancel()
+						return
+					case <-ctx.Done():
+					default:
+						cnt++
+						require.Contains(t, tc.tradingPairs, m.Pair)
+						if cnt >= 3 {
+							cancel()
+							return
+						}
 					}
 				}
 			}

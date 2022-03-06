@@ -18,5 +18,5 @@ type DataPoint struct {
 type Client interface {
 	// Subscribe subscribes to a data feed and receives a stream of data points
 	// for the specified trading pairs in the `receiver` channel.
-	Subscribe(ctx context.Context, tradingPairs []string, receiver chan DataPoint) error
+	Subscribe(ctx context.Context, tradingPairs []string, receiver chan<- DataPoint) error
 }
