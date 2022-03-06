@@ -146,17 +146,16 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver 
 				log.Printf(`websocket closed: "%s"`, err)
 				log.Printf("context done: %s", ctx.Err())
 				close(receiver)
-				return
 
 			default:
 				m, buf, err := c.conn.Reader(ctx)
 				if err != nil {
 					log.Printf(`channel error: "%s"`, err)
+					_ = c.conn.CloseRead(ctx)
 					return
 				}
 
 				if m != ws.MessageText {
-					log.Print(m)
 					// Ignore non-text messages.
 					continue
 				}
