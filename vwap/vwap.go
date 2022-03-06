@@ -8,7 +8,8 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-const maxWindowSize = 200
+// MaxWindowSize is the maximum number of dataPoints in the window.
+const MaxWindowSize = 200
 
 type Result struct {
 	Pair string
@@ -33,8 +34,8 @@ type Window struct {
 
 // NewWindow returns a new sliding Window of size `size`.
 func NewWindow(size uint) (Window, error) {
-	if size == 0 || size > maxWindowSize {
-		size = maxWindowSize
+	if size == 0 || size > MaxWindowSize {
+		size = MaxWindowSize
 	}
 
 	return Window{
