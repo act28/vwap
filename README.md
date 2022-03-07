@@ -73,7 +73,7 @@ To run the tests:
 make test
 ```
 
-Uniting test only. No integration test.
+Unit tests only. No integration test.
 
 ## TODO
 
@@ -81,7 +81,8 @@ Things to do if I had more time:
 
 1. Improve test coverage
 2. Split the websocket data feed and VWAP calculation engine into two separate
-   service implementions. We use the [Dogma](https://github.com/dogmatiq/dogma) framework to build event-sourcing services like this.
+   service implementions. We use the [Dogma](https://github.com/dogmatiq/dogma)
+   framework to build event-sourcing services like this.
 3. Handle websocket timeouts and disconnects.
 
 ## Issues
