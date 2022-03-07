@@ -101,11 +101,7 @@ func run() error {
 
 		g.Go(func() error {
 			for v := range out {
-				select {
-				case <-ctx.Done():
-				default:
-					log.Print(v)
-				}
+				log.Print(v)
 			}
 			return nil
 		})
