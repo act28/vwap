@@ -2,6 +2,7 @@ package coinbase_test
 
 import (
 	"context"
+	"log"
 	"testing"
 	"time"
 
@@ -70,15 +71,16 @@ func TestWebsocketChannelSubscribe(t *testing.T) {
 				receiver := make(chan websocket.DataPoint)
 				go ws.Receive(ctx, receiver)
 
-				var timeout = time.After(3 * time.Second)
+				var timeout = time.After(100 * time.Millisecond)
 				var cnt int
 				for m := range receiver {
 					select {
 					case <-timeout:
+						log.Print("timed out after 100ms")
 						return
-					case <-ctx.Done():
 					default:
 						cnt++
+						log.Print(m)
 						require.Contains(t, tc.tradingPairs, m.Pair)
 						if cnt >= 10 {
 							return
