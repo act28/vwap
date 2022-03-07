@@ -1,6 +1,8 @@
 package vwap_test
 
 import (
+	"context"
+	"log"
 	"testing"
 
 	"github.com/act28/vwap/vwap"
@@ -11,6 +13,8 @@ import (
 
 func TestVWAPCalculation(t *testing.T) {
 	t.Parallel()
+
+	ctx := context.Background()
 
 	tests := []struct {
 		name       string
@@ -124,13 +128,23 @@ func TestVWAPCalculation(t *testing.T) {
 		tt := tt
 
 		t.Run(tt.name, func(t *testing.T) {
-			list, err := vwap.NewWindow(tt.size)
+			var in = make(chan websocket.DataPoint)
+			var out = make(chan vwap.Result)
+
+			w, err := vwap.NewWindow(tt.size)
 			require.NoError(t, err)
 
-			for i, d := range tt.dataPoints {
-				list.Push(d)
+			go w.Calculate(ctx, in, out)
 
-				require.Equal(t, tt.want[i].VWAP.String(), list.VWAP(d.Pair).VWAP.String())
+			for i, d := range tt.dataPoints {
+				in <- d
+
+				v, ok := <-out
+				if !ok {
+					break
+				}
+				log.Print(tt.want[i].VWAP.String(), " = ", v.VWAP.String())
+				require.Equal(t, tt.want[i].VWAP.String(), v.VWAP.String())
 			}
 		})
 	}
