@@ -9,7 +9,6 @@ import (
 	"log"
 	"math/big"
 	"sync"
-	"time"
 
 	"github.com/act28/vwap/websocket"
 	"github.com/shopspring/decimal"
@@ -109,7 +108,7 @@ func NewClient(ctx context.Context, url string) (websocket.Client, error) {
 }
 
 // Subscribe subscribes to the `matches` channel on the websocket.
-func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver chan<- websocket.DataPoint) error {
+func (c *client) Subscribe(ctx context.Context, tradingPairs []string) error {
 	if len(tradingPairs) == 0 {
 		return errors.New(`subscription error: tradingPairs must be provided`)
 	}
@@ -133,14 +132,15 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver 
 		return fmt.Errorf(`subscription error: "%v"`, resp.Message)
 	}
 
+	return nil
+}
+
+// Receive listens on the data channel, and sends datapoints to the
+// receiver.
+func (c *client) Receive(ctx context.Context, receiver chan<- websocket.DataPoint) {
 	go func() {
 		for {
 			select {
-			case <-time.After(5 * time.Second):
-				log.Print(`websocket timed out`)
-				close(receiver)
-				return
-
 			case <-ctx.Done():
 				err := c.conn.Close(ws.StatusNormalClosure, "")
 				log.Printf(`websocket closed: "%s"`, err)
@@ -151,14 +151,15 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver 
 				m, buf, err := c.conn.Reader(ctx)
 				if err != nil {
 					log.Printf(`channel error: "%s"`, err)
-					_ = c.conn.CloseRead(ctx)
-					return
+					ctx = c.conn.CloseRead(ctx)
+					continue
 				}
 
 				if m != ws.MessageText {
 					// Ignore non-text messages.
 					continue
 				}
+
 				var match matchResponse
 				dec := json.NewDecoder(buf)
 				if err := dec.Decode(&match); err != nil {
@@ -176,8 +177,6 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver 
 			}
 		}
 	}()
-
-	return nil
 }
 
 var sequencer struct {

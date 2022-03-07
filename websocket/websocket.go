@@ -16,7 +16,9 @@ type DataPoint struct {
 // Client is an interface for implementing websocket clients that receive a
 // stream of data points for a trading pair.
 type Client interface {
-	// Subscribe subscribes to a data feed and receives a stream of data points
-	// for the specified trading pairs in the `receiver` channel.
-	Subscribe(ctx context.Context, tradingPairs []string, receiver chan<- DataPoint) error
+	// Subscribe subscribes to a data feed, and returns an error, or nil.
+	Subscribe(ctx context.Context, tradingPairs []string) error
+	// Receive listens on the data channel, and sends datapoints to the
+	// receiver.
+	Receive(ctx context.Context, receiver chan<- DataPoint)
 }
