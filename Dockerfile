@@ -1,4 +1,4 @@
-FROM golang:1-alpine
+FROM golang:1.17-alpine
 
 COPY artifacts/build/release/linux/amd64/* /app/bin/
 
