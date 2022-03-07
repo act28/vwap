@@ -65,6 +65,16 @@ make run-cli
 
 This runs the command `go run ./cmd/server/main.go`
 
+### Testing
+
+To run the tests:
+
+```Shell
+make test
+```
+
+Uniting test only. No integration test.
+
 ## TODO
 
 Things to do if I had more time:
