@@ -94,15 +94,9 @@ func run() error {
 				return err
 			}
 
-			for {
-				select {
-				case <-ctx.Done():
-				default:
-					if err := w.Calculate(ctx, in, out); err != nil {
-						log.Printf("calculation error: %s", err)
-					}
-				}
-			}
+			go w.Calculate(ctx, in, out)
+
+			return nil
 		})
 
 		g.Go(func() error {
