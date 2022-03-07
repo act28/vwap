@@ -91,4 +91,5 @@ Things to do if I had more time:
    subscribe` error.
 2. Secondly, it sends a single `last_match` response and nothing else for an
    extended period. It intermittently sends `match` responses in short bursts,
-   again at extended intervals.
+   again at extended intervals. It could be a quirk with the sandbox
+   environment, as it seems to work fine on the live feed.
