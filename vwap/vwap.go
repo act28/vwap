@@ -45,11 +45,6 @@ func NewWindow(size uint) (Window, error) {
 	}, nil
 }
 
-// Len returns the length of the time series.
-func (w *Window) Len() int {
-	return len(w.series)
-}
-
 func (w *Window) VWAP(pair string) Result {
 	tp, ok := w.cumSum[pair]
 	if !ok {
@@ -67,7 +62,7 @@ func (w *Window) Push(dp websocket.DataPoint) {
 	w.m.Lock()
 	defer w.m.Unlock()
 
-	if w.Len() >= int(w.size) {
+	if len(w.series) >= int(w.size) {
 		// Drop the oldest datapoint from the series.
 		p := w.series[0]
 		w.series = w.series[1:]
