@@ -3,23 +3,20 @@ package main
 import (
 	"context"
 	"log"
-	"math/rand"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/act28/vwap/vwap"
 	"github.com/act28/vwap/websocket"
 	"github.com/act28/vwap/websocket/coinbase"
 	"github.com/dogmatiq/dodeca/config"
 	"go.uber.org/dig"
+	"golang.org/x/sync/errgroup"
 )
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
-
 	provide(func() context.Context {
 		return context.Background()
 	})
@@ -47,6 +44,11 @@ func init() {
 	provide(func() chan websocket.DataPoint {
 		return make(chan websocket.DataPoint)
 	})
+
+	// Setup the output channel.
+	provide(func() chan vwap.Result {
+		return make(chan vwap.Result)
+	})
 }
 
 func main() {
@@ -60,49 +62,53 @@ func run() error {
 		env config.Bucket,
 		ctx context.Context,
 		ws websocket.Client,
-		recv chan websocket.DataPoint,
+		in chan websocket.DataPoint,
+		out chan vwap.Result,
 	) error {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		go func() {
-			<-ctx.Done()
-		}()
+		g, ctx := errgroup.WithContext(ctx)
 
-		pairs := strings.Split(
-			strings.TrimSpace(
-				config.AsStringDefault(env, "TRADING_PAIRS", "BTC-USD ETH-USD ETH-BTC"),
-			),
-			" ",
-		)
+		g.Go(func() error {
+			pairs := strings.Split(
+				strings.TrimSpace(
+					config.AsStringDefault(env, "TRADING_PAIRS", "BTC-USD ETH-USD ETH-BTC"),
+				),
+				" ",
+			)
 
-		// Start the websocket feed.
-		if err := ws.Subscribe(
-			ctx,
-			pairs,
-			recv,
-		); err != nil {
-			return err
-		}
-
-		// Calculate the VWAP and dump to tty.
-		w, err := vwap.NewWindow(config.AsUintDefault(env, "WINDOW_SIZE", vwap.MaxWindowSize))
-		if err != nil {
-			return err
-		}
-
-		for m := range recv {
-			select {
-			case <-time.After(3 * time.Second):
-				cancel()
+			// Start the websocket feed.
+			if err := ws.Subscribe(ctx, pairs); err != nil {
 				return err
-			case <-ctx.Done():
-				break
-			default:
-				w.Push(m)
-				log.Print(w.VWAP(m.Pair))
 			}
-		}
+			ws.Receive(ctx, in)
+
+			return nil
+		})
+
+		g.Go(func() error {
+			// Calculate the VWAP.
+			w, err := vwap.NewWindow(config.AsUintDefault(env, "WINDOW_SIZE", vwap.MaxWindowSize))
+			if err != nil {
+				return err
+			}
+
+			go w.Calculate(ctx, in, out)
+
+			return nil
+		})
+
+		g.Go(func() error {
+			for v := range out {
+				select {
+				case <-ctx.Done():
+				default:
+					log.Print(v)
+				}
+			}
+			return nil
+		})
 
 		// Wait for a signal or an error to occur.
 		sig := make(chan os.Signal, 1)
@@ -118,7 +124,7 @@ func run() error {
 			// The context was canceled before we received a signal, something
 			// has gone wrong. Wait for the goroutines to finish and report the
 			// causal error.
-			return nil
+			return g.Wait()
 		}
 	})
 

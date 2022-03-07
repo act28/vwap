@@ -4,9 +4,11 @@ go 1.17
 
 require (
 	github.com/dogmatiq/dodeca v1.3.1
+	github.com/gorilla/websocket v1.4.1
 	github.com/shopspring/decimal v1.3.1
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/dig v1.14.0
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	nhooyr.io/websocket v1.8.7
 )
 

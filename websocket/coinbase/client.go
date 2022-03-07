@@ -2,19 +2,15 @@ package coinbase
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"math/big"
 	"sync"
-	"time"
 
 	"github.com/act28/vwap/websocket"
+	ws "github.com/gorilla/websocket"
 	"github.com/shopspring/decimal"
-	ws "nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
 )
 
 const (
@@ -94,9 +90,7 @@ type client struct {
 
 // NewClient returns a new websocket client, or an error.
 func NewClient(ctx context.Context, url string) (websocket.Client, error) {
-	conn, _, err := ws.Dial(ctx, url, &ws.DialOptions{
-		CompressionMode: ws.CompressionContextTakeover,
-	})
+	conn, _, err := ws.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -109,12 +103,12 @@ func NewClient(ctx context.Context, url string) (websocket.Client, error) {
 }
 
 // Subscribe subscribes to the `matches` channel on the websocket.
-func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver chan<- websocket.DataPoint) error {
+func (c *client) Subscribe(ctx context.Context, tradingPairs []string) error {
 	if len(tradingPairs) == 0 {
 		return errors.New(`subscription error: tradingPairs must be provided`)
 	}
 
-	if err := wsjson.Write(ctx, c.conn, request{
+	if err := c.conn.WriteJSON(request{
 		Type:       requestTypeSubscribe,
 		ProductIDs: tradingPairs,
 		Channels: []channelType{
@@ -125,7 +119,7 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver 
 	}
 
 	var resp subscriptionResponse
-	if err := wsjson.Read(ctx, c.conn, &resp); err != nil {
+	if err := c.conn.ReadJSON(&resp); err != nil {
 		return fmt.Errorf(`subscription response error:: "%w"`, err)
 	}
 
@@ -133,51 +127,24 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string, receiver 
 		return fmt.Errorf(`subscription error: "%v"`, resp.Message)
 	}
 
-	go func() {
-		for {
-			select {
-			case <-time.After(5 * time.Second):
-				log.Print(`websocket timed out`)
-				close(receiver)
-				return
-
-			case <-ctx.Done():
-				err := c.conn.Close(ws.StatusNormalClosure, "")
-				log.Printf(`websocket closed: "%s"`, err)
-				log.Printf("context done: %s", ctx.Err())
-				close(receiver)
-
-			default:
-				m, buf, err := c.conn.Reader(ctx)
-				if err != nil {
-					log.Printf(`channel error: "%s"`, err)
-					_ = c.conn.CloseRead(ctx)
-					return
-				}
-
-				if m != ws.MessageText {
-					// Ignore non-text messages.
-					continue
-				}
-				var match matchResponse
-				dec := json.NewDecoder(buf)
-				if err := dec.Decode(&match); err != nil {
-					if err == io.EOF {
-						ctx = c.conn.CloseRead(ctx)
-						continue
-					}
-					log.Printf(`buffer read error: "%s"`, err)
-					return
-				}
-
-				if data, ok := makeDataPoint(match); ok {
-					receiver <- data
-				}
-			}
-		}
-	}()
-
 	return nil
+}
+
+// Receive listens on the data channel, and sends datapoints to the
+// receiver.
+func (c *client) Receive(ctx context.Context, receiver chan<- websocket.DataPoint) {
+	for {
+		var match matchResponse
+		err := c.conn.ReadJSON(&match)
+		if err != nil {
+			log.Printf(`channel receive error: "%s"`, err)
+			break
+		}
+
+		if data, ok := makeDataPoint(match); ok {
+			receiver <- data
+		}
+	}
 }
 
 var sequencer struct {

@@ -57,34 +57,30 @@ func TestWebsocketChannelSubscribe(t *testing.T) {
 		tc := tc
 
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(ctx)
-			defer cancel()
-
 			// we have to use the production websocket endpoint because the
 			// sandbox only supports BTC-USD.
 			ws, err := coinbase.NewClient(ctx, coinbase.ProdWSURL)
 			require.NoError(t, err)
 
-			receiver := make(chan websocket.DataPoint)
-			err = ws.Subscribe(ctx, tc.tradingPairs, receiver)
+			err = ws.Subscribe(ctx, tc.tradingPairs)
 
 			if tc.wantErr {
 				require.Error(t, err)
 			} else {
-				require.NoError(t, err)
+				receiver := make(chan websocket.DataPoint)
+				go ws.Receive(ctx, receiver)
 
+				var timeout = time.After(3 * time.Second)
 				var cnt int
 				for m := range receiver {
 					select {
-					case <-time.After(3 * time.Second):
-						cancel()
+					case <-timeout:
 						return
 					case <-ctx.Done():
 					default:
 						cnt++
 						require.Contains(t, tc.tradingPairs, m.Pair)
-						if cnt >= 3 {
-							cancel()
+						if cnt >= 10 {
 							return
 						}
 					}
