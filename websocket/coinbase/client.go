@@ -138,45 +138,44 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string) error {
 // Receive listens on the data channel, and sends datapoints to the
 // receiver.
 func (c *client) Receive(ctx context.Context, receiver chan<- websocket.DataPoint) {
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				err := c.conn.Close(ws.StatusNormalClosure, "")
-				log.Printf(`websocket closed: "%s"`, err)
-				log.Printf("context done: %s", ctx.Err())
-				close(receiver)
+	for {
+		select {
+		case <-ctx.Done():
+			err := c.conn.Close(ws.StatusNormalClosure, "")
+			log.Printf(`websocket closed: "%s"`, err)
+			log.Printf("context done: %s", ctx.Err())
+			close(receiver)
+			return
 
-			default:
-				m, buf, err := c.conn.Reader(ctx)
-				if err != nil {
-					log.Printf(`channel error: "%s"`, err)
+		default:
+			m, buf, err := c.conn.Reader(ctx)
+			if err != nil {
+				log.Printf(`channel error: "%s"`, err)
+				_ = c.conn.CloseRead(ctx)
+				return
+			}
+
+			if m != ws.MessageText {
+				// Ignore non-text messages.
+				continue
+			}
+
+			var match matchResponse
+			dec := json.NewDecoder(buf)
+			if err := dec.Decode(&match); err != nil {
+				if err == io.EOF {
 					ctx = c.conn.CloseRead(ctx)
 					continue
 				}
+				log.Printf(`buffer read error: "%s"`, err)
+				return
+			}
 
-				if m != ws.MessageText {
-					// Ignore non-text messages.
-					continue
-				}
-
-				var match matchResponse
-				dec := json.NewDecoder(buf)
-				if err := dec.Decode(&match); err != nil {
-					if err == io.EOF {
-						ctx = c.conn.CloseRead(ctx)
-						continue
-					}
-					log.Printf(`buffer read error: "%s"`, err)
-					return
-				}
-
-				if data, ok := makeDataPoint(match); ok {
-					receiver <- data
-				}
+			if data, ok := makeDataPoint(match); ok {
+				receiver <- data
 			}
 		}
-	}()
+	}
 }
 
 var sequencer struct {
