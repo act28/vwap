@@ -57,8 +57,8 @@ func (w *Window) VWAP(pair string) Result {
 	}
 }
 
-// Push pushes a new datapoint into the window.
-func (w *Window) Push(dp websocket.DataPoint) {
+// push pushes a new datapoint into the window.
+func (w *Window) push(dp websocket.DataPoint) {
 	w.m.Lock()
 	defer w.m.Unlock()
 
@@ -106,35 +106,28 @@ func (w *Window) Push(dp websocket.DataPoint) {
 	w.cumSum[dp.Pair] = tp
 }
 
-func (w *Window) Calculate(ctx context.Context, in <-chan websocket.DataPoint, out chan<- Result) error {
+func (w *Window) Calculate(ctx context.Context, in <-chan websocket.DataPoint, out chan<- Result) {
 	for {
-		select {
-		case <-ctx.Done():
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-		default:
-			dp, ok := <-in
-			if !ok {
-				close(out)
-				return ctx.Err()
-			}
+		dp, ok := <-in
+		if !ok {
+			close(out)
+			return
+		}
 
-			w.Push(dp)
+		w.push(dp)
 
-			tp, ok := w.cumSum[dp.Pair]
-			if !ok {
-				out <- Result{
-					Pair: dp.Pair,
-					VWAP: decimal.NewFromInt(0),
-				}
-				continue
-			}
-
+		tp, ok := w.cumSum[dp.Pair]
+		if !ok {
 			out <- Result{
 				Pair: dp.Pair,
-				VWAP: tp.vwap,
+				VWAP: decimal.NewFromInt(0),
 			}
+			continue
+		}
+
+		out <- Result{
+			Pair: dp.Pair,
+			VWAP: tp.vwap,
 		}
 	}
 }
