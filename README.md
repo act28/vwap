@@ -87,9 +87,9 @@ Things to do if I had more time:
 
 ## Issues
 
-1. The sandbox endpoint operates differently to the live endpoint. Firstly, it
-   only accepts `BTC-USD`. All other `product_id` results in a `Failed to
-   subscribe` error.
+1. The sandbox environment operates differently to the live environment.
+   Firstly, it only accepts `BTC-USD`. All other `product_id` results in a
+   `Failed to subscribe` error.
 2. Secondly, it sends a single `last_match` response and nothing else for an
    extended period. It intermittently sends `match` responses in short bursts,
    again at extended intervals. It could be a quirk with the sandbox
