@@ -134,15 +134,20 @@ func (c *client) Subscribe(ctx context.Context, tradingPairs []string) error {
 // receiver.
 func (c *client) Receive(ctx context.Context, receiver chan<- websocket.DataPoint) {
 	for {
-		var match matchResponse
-		err := c.conn.ReadJSON(&match)
-		if err != nil {
-			log.Printf(`channel receive error: "%s"`, err)
-			break
-		}
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			var match matchResponse
+			err := c.conn.ReadJSON(&match)
+			if err != nil {
+				log.Printf(`channel receive error: "%s"`, err)
+				break
+			}
 
-		if data, ok := makeDataPoint(match); ok {
-			receiver <- data
+			if data, ok := makeDataPoint(match); ok {
+				receiver <- data
+			}
 		}
 	}
 }

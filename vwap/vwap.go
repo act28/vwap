@@ -108,26 +108,30 @@ func (w *Window) push(dp websocket.DataPoint) {
 
 func (w *Window) Calculate(ctx context.Context, in <-chan websocket.DataPoint, out chan<- Result) {
 	for {
-		dp, ok := <-in
-		if !ok {
-			close(out)
-			return
-		}
+		select {
+		case <-ctx.Done():
+		default:
+			dp, ok := <-in
+			if !ok {
+				close(out)
+				return
+			}
 
-		w.push(dp)
+			w.push(dp)
 
-		tp, ok := w.cumSum[dp.Pair]
-		if !ok {
+			tp, ok := w.cumSum[dp.Pair]
+			if !ok {
+				out <- Result{
+					Pair: dp.Pair,
+					VWAP: decimal.NewFromInt(0),
+				}
+				continue
+			}
+
 			out <- Result{
 				Pair: dp.Pair,
-				VWAP: decimal.NewFromInt(0),
+				VWAP: tp.vwap,
 			}
-			continue
-		}
-
-		out <- Result{
-			Pair: dp.Pair,
-			VWAP: tp.vwap,
 		}
 	}
 }
