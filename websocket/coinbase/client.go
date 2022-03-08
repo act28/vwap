@@ -136,7 +136,9 @@ func (c *client) Receive(ctx context.Context, receiver chan<- websocket.DataPoin
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			if err := c.conn.Close(); err != nil {
+				log.Printf(`websocket close error: "%s"`, err)
+			}
 		default:
 			var match matchResponse
 			err := c.conn.ReadJSON(&match)
